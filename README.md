@@ -1,5 +1,7 @@
 # Busan AIS Ship Behavior Analysis
 
+[한국어](README.ko.md) | **English**
+
 > AIS-based vessel behavior detection and time-lapse visualization for the Port of Busan, Korea.
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)

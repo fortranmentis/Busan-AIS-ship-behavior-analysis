@@ -4,6 +4,7 @@
 
 !/.gitignore
 !/README.md
+!/README.ko.md
 !/ais_common.py
 !/2acting_video2_demo.py
 !/3docked_video_demo.py
