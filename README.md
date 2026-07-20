@@ -134,6 +134,28 @@ Key design points:
 - **Single basemap fetch.** The satellite basemap is downloaded once (`contextily.bounds2img`) and reused by every frame.
 - **Deterministic state.** Berthing status is derived from each vessel's own time series (forward-filled state machine), independent of frame processing order.
 
+### Multiprocessing & frame streaming
+
+Frame rendering is embarrassingly parallel — every frame depends only on the preprocessed payload, never on another frame — so it maps directly onto a process pool:
+
+```python
+with Pool(processes=num_processes,
+          initializer=init_worker, initargs=(payload,)) as pool:
+    for i, img in enumerate(pool.imap(process_frame, range(total_frames),
+                                      chunksize=10)):
+        Image.fromarray(img).save(os.path.join(tmpdir, f'frame_{i:05d}.png'))
+```
+
+Each piece of this line is deliberate:
+
+- **Worker count** — `min(physical_cores + 2, logical_cores)`. Rendering is CPU-bound, so the pool is sized to physical cores; the +2 oversubscription keeps cores busy while a worker is briefly stalled on memory allocation or page faults.
+- **`initializer` / `initargs`** — the payload (per-vessel groups, cached basemap, color map, bbox) is pickled and delivered to each worker **once at pool startup**, then kept in a module-level global. Without this, the data would either be re-pickled for every single task or — worse, on Windows `spawn`, which inherits nothing — reloaded from disk in every worker. Workers also re-register the Korean font here, since font state is per-process.
+- **`imap` instead of `map`** — `map` blocks until *all* results are ready and materializes the full result list: at 3000×2000×3 bytes ≈ 18 MB per frame, a 1000-frame run would hold ~18 GB of pixels in RAM. `imap` returns a lazy iterator that yields each frame as soon as it is ready, so the main process saves the PNG, drops the array, and memory stays flat at O(workers) frames. It also lets the tqdm progress bar advance in real time.
+- **`imap` instead of `imap_unordered`** — `imap` preserves submission order, so the `enumerate` index always matches the frame's position in time and `frame_%05d.png` numbering is correct by construction. `imap_unordered` would deliver slightly better latency but would require threading the frame index through every result to avoid scrambled video.
+- **`chunksize=10`** — each task argument is just an `int`, so per-task IPC overhead would dominate with the default chunk size of 1. Batching 10 frames per dispatch amortizes the pickling/queue round-trips; the value only needs to be small relative to `total_frames / workers` so the pool stays load-balanced at the tail.
+- **Headless rendering** — the library forces matplotlib's `Agg` backend before `pyplot` is touched, so workers never try to open a GUI canvas; each frame builds one figure and closes it, leaving no shared drawing state between tasks.
+- **Fault tolerance by shape** — because frames are written straight to a temporary directory and FFmpeg runs only after the pool drains, a crashed run leaves nothing half-encoded; re-running is idempotent.
+
 ## Getting started
 
 ### Requirements
