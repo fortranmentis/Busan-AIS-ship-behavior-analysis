@@ -1,0 +1,14 @@
+# 이 폴더에는 대용량 원본 데이터(CSV, shapefile)가 함께 있으므로
+# 화이트리스트 방식으로 공개 대상 파일만 추적한다.
+/*
+
+!/.gitignore
+!/README.md
+!/ais_common.py
+!/2acting_video2_demo.py
+!/3docked_video_demo.py
+!/assets
+
+# 파이썬 바이트코드는 커밋하지 않는다
+__pycache__/
+*.pyc
