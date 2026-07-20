@@ -116,9 +116,11 @@ The AIS data and official shapefiles are **not** included in this repository. Th
 |---|---|---|
 | `busan_AIS2.csv` | Dynamic AIS fixes | `MMSI`, `일시` (timestamp), `경도`/`위도` (lon/lat, WGS 84), `SOG`, `COG`, `Heading` |
 | `Static.csv` | Static vessel info | `MMSI`, `선종코드` (AIS ship type code) |
-| `제1광역항로_5.shp`, `제2광역항로_5.shp`, `지선항로_5.shp`, `고시항로_2023.shp` | Designated fairways | EPSG:4326 |
-| `고시정박지_2023.shp`, `정박지(KOMC)_2023_병합.shp`, `무역항_2024.shp` | Anchorages / trade port | EPSG:4326, used by `3docked_video_demo.py` |
-| `100m버퍼3.shp` | 100 m coastal buffer | EPSG:4326, used by `2acting_video2_demo.py` |
+| `항로.shp` | Designated fairways | EPSG:4326 |
+| `정박지.shp`, `항구.shp` | Anchorages / trade port | EPSG:4326, used by `3docked_video_demo.py` |
+| `해안선버퍼.shp` | 100 m coastal buffer | EPSG:4326, used by `2acting_video2_demo.py` |
+
+Shapefile names above are placeholders — point the `load_shapes()` calls in each script's `main()` to your own files.
 
 ## Repository structure
 
