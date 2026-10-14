@@ -9,6 +9,7 @@
 !/2acting_video2_demo.py
 !/3docked_video_demo.py
 !/assets
+!/VALIDATION.md
 
 # 파이썬 바이트코드는 커밋하지 않는다
 __pycache__/
