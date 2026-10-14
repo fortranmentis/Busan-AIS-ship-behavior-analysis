@@ -1,319 +1,263 @@
+<div align="center">
+
 # Busan AIS Ship Behavior Analysis
 
-[한국어](README.ko.md) | **English**
+**From vessel trajectories to interpretable maritime behavior.**
 
-> AIS-based vessel behavior detection and time-lapse visualization for the Port of Busan, Korea.
+Rule-based geospatial analysis · Vessel activity indicators · Satellite-map time-lapse
+
+**English** · [한국어](README.ko.md)
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
-![GeoPandas](https://img.shields.io/badge/GeoPandas-geospatial-139C5A)
+![GeoPandas](https://img.shields.io/badge/GeoPandas-spatial_analysis-139C5A)
 ![Matplotlib](https://img.shields.io/badge/Matplotlib-rendering-11557C)
-![FFmpeg](https://img.shields.io/badge/FFmpeg-encoding-007808?logo=ffmpeg&logoColor=white)
+![FFmpeg](https://img.shields.io/badge/FFmpeg-H.264-007808?logo=ffmpeg&logoColor=white)
+![Method](https://img.shields.io/badge/Method-rule_based-526D82)
 
-## Table of contents
+[About](#about) · [Highlights](#highlights) · [Demo](#demo) · [Quick start](#quick-start) · [Validation](#validation) · [Notes](#notes)
 
-- [Background](#background)
-- [Demo](#demo)
-- [Features](#features)
-- [Behavior classification rules](#behavior-classification-rules)
-- [Architecture](#architecture)
-- [Getting started](#getting-started)
-- [Input data](#input-data)
-- [Configuration & tuning](#configuration--tuning)
-- [Shared library (`ais_common.py`)](#shared-library-ais_commonpy)
-- [Performance design](#performance-design)
-- [Troubleshooting](#troubleshooting)
-- [Limitations & roadmap](#limitations--roadmap)
-- [Glossary](#glossary)
-- [Repository structure](#repository-structure)
+</div>
 
-## Background
+## About
 
-The Port of Busan is one of the busiest container ports in the world, and its approaches carry a dense mix of cargo ships, tankers, passenger craft, tugs, and fishing vessels. Every one of them continuously broadcasts its position, speed, and course over AIS (Automatic Identification System) — but a raw AIS log is just millions of timestamped points. Turning those points into *behavior* (Is this ship anchored or drifting? Did it leave its designated fairway? Is that tug actually towing something?) is what makes the data useful for vessel traffic services, port safety studies, and maritime traffic engineering.
+This repository turns historical AIS (Automatic Identification System) observations around Busan into visual indicators of vessel behavior. It combines speed, heading, successive positions, vessel-type metadata, and polygon membership to highlight stationary vessels, low-speed movement, fairway exits, and possible operational activities.
 
-This project does exactly that transformation. It classifies each vessel's state second by second using simple, transparent geometric and kinematic rules against officially designated fairway and anchorage polygons, then renders the whole picture as a time-lapse video over satellite imagery — so an analyst can *watch* a day of port traffic unfold in seconds and immediately spot anomalies.
+The emphasis is **inspectable rules and spatial context**: analysts can trace each indicator to an explicit threshold and review it against the surrounding traffic. Two Python pipelines render time-lapse MP4s over Esri World Imagery, with vessel-type colors and Korean legends.
 
-Two independent pipelines are provided:
-
-| Pipeline | Script | Detects |
+| Pipeline | Entry point | Analytical output |
 |---|---|---|
-| Navigational status | `3docked_video_demo.py` | Anchoring, loitering, route deviation |
-| Operational activity | `2acting_video2_demo.py` | Berthing/cargo handling, fishing, towing |
+| Navigational status | [`3docked_video_demo.py`](3docked_video_demo.py) | Stationary/anchoring indicators, loitering candidates, fairway exits, SOG labels and direction arrows |
+| Operational activity | [`2acting_video2_demo.py`](2acting_video2_demo.py) | Persistent berthing candidates, fishing candidates, towing-related proximity indicators |
+
+> [!IMPORTANT]
+> Behavior labels are **heuristic candidates**, not confirmed events. AIS alone does not establish cargo handling, active fishing, a tow relationship, or an unsafe maneuver. No labeled accuracy benchmark is provided.
+
+## Highlights
+
+- **Transparent classification.** Speed, displacement, heading change, and polygon membership define the rules; there is no trained model or hidden score.
+- **Two complementary views.** Separate navigation and activity pipelines support inspection of movement patterns and vessel interactions.
+- **Spatial preprocessing.** GeoPandas joins compute route/anchorage/buffer membership before rendering; the activity renderer builds a KD-tree for proximity at each frame.
+- **Time-series state.** MMSI groups are sorted once and queried with `numpy.searchsorted`. Berthing state is computed before parallel rendering.
+- **Parallel video generation.** A process pool renders 3000 × 2000 RGB frames; ordered `imap` results are saved as temporary PNGs and encoded with FFmpeg.
+- **Evidence-aware documentation.** Local input inventories, quality findings, and validation limits are recorded in [the validation report](VALIDATION.md).
 
 ## Demo
 
-### Anchoring / Loitering / Route deviation (`3docked_video_demo.py`)
+| Navigational status | Operational activity |
+|:---:|:---:|
+| ![Stationary, loitering and fairway exit indicators](assets/ship_movement_DOCK_SPEED_demo2.gif) | ![Berthing, fishing and towing-related indicators](assets/ship_movement_act2_demo.gif) |
+| [View MP4](assets/ship_movement_DOCK_SPEED_demo2.mp4) · `3docked_video_demo.py` | [View MP4](assets/ship_movement_act2_demo.mp4) · `2acting_video2_demo.py` |
 
-Vessels are classified every second against designated fairway and anchorage polygons. Filled circles mark anchored/stationary ships, yellow rings mark loitering, red rings mark ships that have just left a designated route. Each moving vessel shows its SOG label and a COG vector arrow.
+**Read the overlays:** filled circles denote stationary or latched berthing states; yellow rings in the navigation view mark loitering candidates; red rings mark an observed fairway exit. In the activity view, blue rings mark fishing candidates and yellow rings mark towing-related candidates. Vessel-type colors are distinct from behavior overlays.
 
-![Anchoring, loitering and route deviation demo](assets/ship_movement_DOCK_SPEED_demo2.gif)
+Both bundled GIFs are 720 × 480, with 167 frames and 16.7 seconds of playback. They are existing illustrative assets; their generation settings and correspondence to the current code have not been revalidated.
 
-**What to look for:** ships holding position inside anchorage polygons (filled dots), slow drifters outside them picking up yellow loitering rings, and the red flash when a vessel's fix crosses a fairway boundary outward.
+## Quick start
 
-### Operational activity (`2acting_video2_demo.py`)
+### 1. Clone and prepare the environment
 
-Berthing status is tracked as a persistent per-vessel state, fishing activity is inferred from vessel type and speed, and towing operations are inferred from tug speed plus proximity to another vessel (KD-tree neighbor search).
+Python 3.10+ is a suggested environment target; dependencies are not pinned and no tested version matrix is declared. Install all directly used libraries and FFmpeg, for example:
 
-![Operational activity demo](assets/ship_movement_act2_demo.gif)
+```bash
+git clone https://github.com/fortranmentis/Busan-AIS-ship-behavior-analysis.git
+cd Busan-AIS-ship-behavior-analysis
+conda create -n busan-ais -c conda-forge python=3.10 pandas numpy geopandas shapely matplotlib contextily scipy pillow tqdm psutil ffmpeg
+conda activate busan-ais
+```
 
-**What to look for:** vessels "sticking" to berths as filled dots that survive brief GPS jitter (the state machine holds until the ship actually gets under way), blue rings around slow fishing vessels, and yellow rings appearing only when a tug is both slow *and* has a companion vessel nearby.
+Provide a Korean font (Windows Malgun Gothic or a supported Nanum font) and network access for the satellite basemap. GPU hardware is optional: navigation requests NVENC and falls back to `libx264`; activity uses `libx264` by default.
 
-Full-resolution MP4 versions are available in [`assets/`](assets/).
+### 2. Supply the inputs
 
-## Features
+The public repository contains demo scripts, the shared module, documentation, and media. **AIS CSVs and Shapefiles are local inputs excluded by `.gitignore`.** A fresh clone cannot render a video until these inputs are supplied.
 
-- **Rule-based, explainable classification** — every marker on screen traces back to one row of the rules tables below; no black boxes
-- **Official geography aware** — detection runs against designated fairway, anchorage, and port polygons, not arbitrary zones
-- **Publication-quality output** — 3000×2000 px frames on Esri World Imagery, Korean-labeled legend, H.264 MP4
-- **Fast** — vectorized spatial joins, per-vessel binary search, cached basemap, and a multiprocessing render farm; all spatial predicates leave the hot loop
-- **Portable** — Windows/Linux, headless (Agg) rendering, GPU encoding with automatic CPU fallback, encoding-tolerant CSV loading (UTF-8/CP949)
-- **Tunable** — every threshold is a named constant at the top of each script
+Place files beside the scripts, or edit input paths in each `main()`. Both entry points change the working directory to the script directory.
 
-## Behavior classification rules
-
-### `3docked_video_demo.py` — navigational status
-
-| Status | Condition | Marker |
+| Input | Required by | Purpose |
 |---|---|---|
-| Anchored (in anchorage) | Inside a designated anchorage ∧ SOG ≤ 2.1 kn | Filled circle |
-| Stationary (outside) | SOG ≤ 2.1 kn ∧ moved ≤ 10 m or heading changed ≥ 10° within 200 s | Filled circle |
-| Loitering | SOG ≤ 2.1 kn but not stationary | Yellow ring |
-| Route deviation | Previous fix inside a designated route ∧ current fix outside, within 600 s | Red ring |
-| Under way | SOG > 2.1 kn | Directional marker + SOG label + COG arrow |
+| `busan_AIS2.csv` | Both | Dynamic vessel observations |
+| `Static.csv` | Both | MMSI-to-vessel-type lookup |
+| `제1광역항로_5.shp`, `제2광역항로_5.shp`, `지선항로_5.shp`, `고시항로_2023.shp` | Both | Combined fairways; activity uses these as a visual overlay |
+| `고시정박지_2023.shp`, `정박지(KOMC)_2023_병합.shp`, `무역항_2024.shp` | Navigation | Combined `in_anchorage` area, including trade-port polygons |
+| `100m버퍼3.shp` | Activity | Buffer polygons for `in_port` and berthing state |
 
-*Why 2.1 kn?* Anchored and berthed ships still report residual SOG from GPS noise and swinging at anchor; 2.1 kn is a practical cutoff that separates that noise from genuine slow steaming. The 10 m / 10° secondary test distinguishes a ship truly holding position (or swinging on its anchor chain) from one creeping along at low speed.
+Keep each Shapefile's `.shp`, `.shx`, `.dbf`, and `.prj` together, plus `.cpg` where supplied. All eight referenced local layers declare WGS 84 geographic coordinates. The loader **overrides CRS to EPSG:4326**, converts to EPSG:3857, and applies `buffer(0)`; supply actual WGS 84 coordinates. Assigning a CRS does not reproject source coordinates. Local `100m버퍼2.shp` is UTM Zone 52N and is not a drop-in substitute.
 
-### `2acting_video2_demo.py` — operational activity
+### 3. Render a preview
 
-| Activity | Condition | Marker |
+```bash
+python 3docked_video_demo.py --frames 100 --fps 30 --output navigation_preview.mp4
+python 2acting_video2_demo.py --frames 100 --fps 30 --output activity_preview.mp4
+```
+
+Increase `--frames` after checking inputs and the preview:
+
+```bash
+python 3docked_video_demo.py --frames 1000 --fps 30 --output navigation_1000.mp4
+```
+
+| Option | Default | Meaning |
 |---|---|---|
-| Berthing / cargo handling | Inside 100 m coastal buffer ∧ SOG ≤ 2.1 kn (state persists until SOG > 2.1 kn) | Filled circle |
-| Fishing | Fishing vessel ∧ 0 ≤ SOG ≤ 5 kn | Blue ring |
-| Towing operation | Tug ∧ 0.5 ≤ SOG ≤ 8 kn ∧ another vessel within ≈ 570 m | Yellow ring |
+| `--frames` | `100` | Requested frame cap, also limited by the input time span |
+| `--fps` | `30` | Playback frames per second |
+| `--output` | `ship_movement_DOCK_SPEED_demo2.mp4` / `ship_movement_act2_demo.mp4` | Navigation / activity output path |
 
-*Why a persistent state for berthing?* A berthed ship's AIS fixes wobble in and out of the coastal buffer and its SOG flickers around zero. Latching the state on entry and releasing it only when the ship demonstrably gets under way (SOG > 2.1 kn) eliminates that flicker. The state is computed deterministically from each vessel's own time series during preprocessing, so results are reproducible regardless of how frames are parallelized.
+At `FRAME_STEP_SEC = 1`, 1,000 frames sample offsets 0–999 seconds and produce about 33.3 seconds at 30 FPS. Playback speed does not change classification thresholds. Use positive frame counts/FPS and a nonzero input time span. FFmpeg overwrites an existing output of the same name.
 
-*Why proximity for towing?* A tug moving at working speed with no other vessel nearby is just transiting. The KD-tree neighbor test (≈ 570 m) requires a plausible tow partner before the towing marker is drawn.
+## Data contract
 
-### Vessel type color coding (AIS ship type code)
-
-| Code | Category | Color |
+| Dataset | Field | Meaning / expected value |
 |---|---|---|
-| 30 | Fishing | blue |
-| 31, 32, 50, 52 | Tug / pilot / towing | yellow |
-| 36, 37 | Yacht / pleasure craft | lime |
-| 40–49, 60–69 | Passenger / high-speed craft | pink |
-| 70–79 | Cargo | orange |
-| 80–89 | Tanker | red |
-| other | Unclassified | gray |
+| Dynamic | `MMSI` | Vessel identifier; use a consistent representation in dynamic and static files |
+| Dynamic | `일시` | Parsed with `%Y-%m-%d %H:%M:%S`; the code does not assign a timezone |
+| Dynamic | `경도`, `위도` | WGS 84 longitude and latitude in degrees |
+| Dynamic | `SOG` | Speed over ground in knots |
+| Dynamic | `Heading` | Bow direction; `511` means not available and currently passes through |
+| Dynamic | `COG` | Optional course over ground for navigation arrows; absent/missing values fall back to `Heading` |
+| Static | `MMSI`, `선종코드` | Identifier and AIS ship-type code; other static fields are unused by the demos |
+
+CSV decoding tries UTF-8 BOM, CP949, EUC-KR, then UTF-8. Dynamic records have no separate cleaning stage. The static reader uses `on_bad_lines='skip'`; duplicate static MMSIs would resolve to the last dictionary value. Validate parsing losses, duplicate timestamps, coordinates, and metadata coverage before interpretation.
+
+<details>
+<summary><strong>Vessel-type color mapping</strong></summary>
+
+| AIS ship-type code | Display group | Color |
+|---|---|---|
+| `30` | Fishing | Blue |
+| `31`, `32`, `50`, `52` | Towing / pilot / tug group | Yellow |
+| `36`, `37` | Sailing / pleasure craft | Lime |
+| `40–49`, `60–69` | High-speed / passenger craft | Pink |
+| `70–79` | Cargo | Orange |
+| `80–89` | Tanker | Red |
+| Other, missing, or unmatched | Unclassified | Gray |
+
+The towing-related rule uses the entire yellow display group, including pilot vessels; it is not restricted to tug code `52`.
+
+</details>
+
+## Classification rules
+
+These thresholds describe the current implementation, not empirically established operating standards. Adjacent observations are compared within each MMSI group.
+
+### Navigational status
+
+| Indicator | Implemented condition | Display |
+|---|---|---|
+| Stationary inside analysis area | `SOG ≤ 2.1 kn` and `in_anchorage` | Filled vessel-color circle |
+| Stationary outside analysis area | `SOG ≤ 2.1 kn`, previous fix available, gap `≤ 200 s`, and (displacement `≤ 10 m` **or** wrapped Heading change `≥ 10°`) | Filled vessel-color circle |
+| Loitering candidate | Same low-speed/previous-fix/gap conditions, but displacement `> 10 m` **and** Heading change `< 10°` | Yellow ring plus vessel marker |
+| Fairway exit | Previous fix inside combined routes, latest fix outside, report gap **`< 600 s`** | Red ring, independent of stationary classification |
+| Remaining observations | No filled stationary circle, including low-speed records with no eligible previous fix | Directional vessel marker |
+
+Displacement uses haversine on longitude/latitude. A loitering ring is **not** drawn for every low-speed vessel. Fairway exits indicate membership transitions, not proof of violations. The red indicator can persist until the next AIS report because the latest/previous pair is reused across frames.
+
+SOG labels appear when `SOG > 0`; direction arrows are drawn for every displayed vessel, including stationary ones. `in_anchorage` is the union of anchorage **and trade-port** polygons, so a filled circle does not distinguish actual anchoring from being stationary within a port.
+
+### Operational activity
+
+| Indicator | Implemented condition | Display |
+|---|---|---|
+| Berthing candidate | Enter when inside `100m버퍼3.shp` and `SOG ≤ 2.1 kn`; leave when `SOG > 2.1 kn`; otherwise retain previous state | Filled vessel-color circle |
+| Fishing candidate | Not berthed; blue vessel group and `0 ≤ SOG ≤ 5 kn` | Blue ring |
+| Towing-related candidate | Not berthed; yellow group, `0.5 ≤ SOG ≤ 8 kn`, and another displayed vessel within `PROXIMITY_RADIUS` | Yellow ring |
+
+Berthing takes display priority and suppresses activity rings. The nominal 100 m buffer width is implied by its filename; construction was not independently verified. Proximity uses all latest displayed fixes without partner-type, bearing, duration, or freshness constraints.
+
+`PROXIMITY_RADIUS = 0.0051 × 111319.49079327358 ≈ 567.7` **EPSG:3857 map units**. Web Mercator distances are latitude-dependent; this is not an exact 568 m ground-distance criterion.
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph main["Main process (runs once)"]
-        A[AIS CSV] --> B["Load & parse<br/>encoding fallback,<br/>EPSG:4326 → 3857"]
-        S[Shapefiles] --> C["Spatial join<br/>in_route / in_anchorage /<br/>in_port per fix"]
-        B --> C
-        C --> D["Per-vessel groups<br/>time-sorted,<br/>berthing state machine"]
-        E["Satellite basemap<br/>fetched once"] --> F
-        D --> F["Worker payload"]
-    end
-    subgraph pool["Worker pool (N processes)"]
-        F --> G["Frame renderer<br/>binary search + drawing only"]
-    end
-    G --> H["PNG frames<br/>streamed to disk"]
-    H --> I["FFmpeg<br/>h264_nvenc → libx264 fallback"]
-    I --> J([MP4])
+flowchart TD
+    A["Dynamic AIS + static vessel metadata"] --> C["Decode, parse, project and group by MMSI"]
+    B["Fairway, anchorage and buffer polygons"] --> D["Precompute polygon membership"]
+    C --> D
+    D --> E["Prepare sorted trajectories and berthing state"]
+    F["Fetch satellite basemap once per run"] --> G["Initialize rendering workers"]
+    E --> G
+    G --> H["Select latest fix for each frame"]
+    H --> I["Apply rules, proximity search and overlays"]
+    I --> J["Ordered PNG sequence"]
+    J --> K["FFmpeg H.264 MP4"]
 ```
 
-Key design points:
+[`ais_common.py`](ais_common.py) centralizes CSV loading, ship colors, geometry preparation, spatial joins, heading/distance helpers, fonts, basemap acquisition, and encoding. Entry points configure their layers and frame renderers.
 
-- **All spatial predicates are precomputed.** Route/anchorage/port membership is resolved once per AIS fix with a vectorized spatial join (`geopandas.sjoin`), so the per-frame render loop does no geometry tests at all.
-- **Per-vessel binary search.** Trajectories are grouped by MMSI and time-sorted; each frame locates the latest fix with `np.searchsorted` instead of filtering the full dataset.
-- **Windows-safe multiprocessing.** Heavy data loading happens once in the main process and is shipped to workers through the pool initializer, so `spawn` does not re-execute it per worker.
-- **Single basemap fetch.** The satellite basemap is downloaded once (`contextily.bounds2img`) and reused by every frame.
-- **Deterministic state.** Berthing status is derived from each vessel's own time series (forward-filled state machine), independent of frame processing order.
+**Performance design:** membership is computed once per observation; binary search avoids repeated full-data filtering; workers receive a payload via the pool initializer; ordered `imap(..., chunksize=10)` preserves frame order. Frames are saved incrementally rather than assembled into one result list.
 
-### Multiprocessing & frame streaming
+Worker count is `min(physical cores + 2, logical cores)`. Windows workers can each hold a payload copy; ordered result buffering can increase memory when a frame is slow. Temporary PNG storage grows with frame count. No runtime or peak-memory benchmark is claimed.
 
-Frame rendering is embarrassingly parallel — every frame depends only on the preprocessed payload, never on another frame — so it maps directly onto a process pool:
+## Validation
 
-```python
-with Pool(processes=num_processes,
-          initializer=init_worker, initargs=(payload,)) as pool:
-    for i, img in enumerate(pool.imap(process_frame, range(total_frames),
-                                      chunksize=10)):
-        Image.fromarray(img).save(os.path.join(tmpdir, f'frame_{i:05d}.png'))
-```
+**Documentation and local input audit: 2026-10-14.** These are aggregate findings from the working folder, not downloadable public data or classification accuracy scores.
 
-Each piece of this line is deliberate:
-
-- **Worker count** — `min(physical_cores + 2, logical_cores)`. Rendering is CPU-bound, so the pool is sized to physical cores; the +2 oversubscription keeps cores busy while a worker is briefly stalled on memory allocation or page faults.
-- **`initializer` / `initargs`** — the payload (per-vessel groups, cached basemap, color map, bbox) is pickled and delivered to each worker **once at pool startup**, then kept in a module-level global. Without this, the data would either be re-pickled for every single task or — worse, on Windows `spawn`, which inherits nothing — reloaded from disk in every worker. Workers also re-register the Korean font here, since font state is per-process.
-- **`imap` instead of `map`** — `map` blocks until *all* results are ready and materializes the full result list: at 3000×2000×3 bytes ≈ 18 MB per frame, a 1000-frame run would hold ~18 GB of pixels in RAM. `imap` returns a lazy iterator that yields each frame as soon as it is ready, so the main process saves the PNG, drops the array, and memory stays flat at O(workers) frames. It also lets the tqdm progress bar advance in real time.
-- **`imap` instead of `imap_unordered`** — `imap` preserves submission order, so the `enumerate` index always matches the frame's position in time and `frame_%05d.png` numbering is correct by construction. `imap_unordered` would deliver slightly better latency but would require threading the frame index through every result to avoid scrambled video.
-- **`chunksize=10`** — each task argument is just an `int`, so per-task IPC overhead would dominate with the default chunk size of 1. Batching 10 frames per dispatch amortizes the pickling/queue round-trips; the value only needs to be small relative to `total_frames / workers` so the pool stays load-balanced at the tail.
-- **Headless rendering** — the library forces matplotlib's `Agg` backend before `pyplot` is touched, so workers never try to open a GUI canvas; each frame builds one figure and closes it, leaving no shared drawing state between tasks.
-- **Fault tolerance by shape** — because frames are written straight to a temporary directory and FFmpeg runs only after the pool drains, a crashed run leaves nothing half-encoded; re-running is idempotent.
-
-## Getting started
-
-### Requirements
-
-- Python ≥ 3.10 with: `pandas`, `numpy`, `geopandas`, `shapely`, `matplotlib`, `contextily`, `scipy`, `pillow`, `tqdm`, `psutil`
-- FFmpeg on `PATH` (or in the active conda environment — the runner also checks `<env>/Library/bin`)
-- A Korean-capable font (NanumSquare or Malgun Gothic is auto-detected)
-- Internet access on first run (satellite basemap tiles)
-
-### Installation
-
-```bash
-conda create -n ais python=3.10 geopandas contextily scipy pillow tqdm psutil ffmpeg -c conda-forge
-conda activate ais
-```
-
-### Usage
-
-```bash
-# Quick check: render 100 frames (~3 s of video)
-python 3docked_video_demo.py
-
-# Full run: anchoring / loitering / route deviation video
-python 3docked_video_demo.py --frames 1000 --output dock_demo.mp4 --fps 30
-
-# Operational activity video
-python 2acting_video2_demo.py --frames 1000 --output activity_demo.mp4 --fps 30
-```
-
-| Option | Default | Description |
+| Check | Observed result | Interpretation |
 |---|---|---|
-| `--frames` | 100 | Number of 1-second frames to render |
-| `--output` | script-specific | Output MP4 filename |
-| `--fps` | 30 | Output video frame rate |
+| Dynamic input | **787,591 rows · 1,070 MMSIs** | Historical extract: `2022-09-01 00:00:00`–`05:59:58`; timezone unspecified |
+| Dynamic completeness | No empty values in seven supplied columns; no out-of-range/non-numeric lon/lat or negative/non-finite SOG found | Basic checks; not a sampling-quality or AIS-validity assessment |
+| Heading availability | **455,162 records (57.79%) contain `Heading=511`** | Direction markers and heading-change rules need careful interpretation |
+| Static metadata | **55,630 rows · 55,630 MMSIs**, 318 empty ship-type fields | No duplicate static MMSIs; some ship-type data are missing |
+| Metadata coverage | **13 of 1,070 dynamic MMSIs have no static match** | Those identifiers fall back to gray |
+| Spatial inputs | **8 of 8** sets have `.shp/.shx/.dbf/.prj`; WGS 84 declared | Header/CRS inventory; topology and buffer width not validated |
+| Public modules | All **3** parse successfully with Python AST | Syntax only; no import, rendering, or encoding verification |
+| Demo GIFs | Both decoded frame by frame: **720 × 480 · 167 frames · 16.7 s** | Readability verified; event correctness not assessed |
 
-Each frame advances simulation time by one second, so `--frames 1000 --fps 30` compresses ~17 minutes of real traffic into a 33-second video (≈ 30× time-lapse).
-
-## Input data
-
-The AIS data and official shapefiles are **not** included in this repository. The scripts expect the following files in the working directory:
-
-| File | Content | Required columns / notes |
-|---|---|---|
-| `busan_AIS2.csv` | Dynamic AIS fixes | `MMSI`, `일시` (timestamp), `경도`/`위도` (lon/lat, WGS 84), `SOG`, `COG`, `Heading` |
-| `Static.csv` | Static vessel info | `MMSI`, `선종코드` (AIS ship type code) |
-| `항로.shp` | Designated fairways | EPSG:4326 |
-| `정박지.shp`, `항구.shp` | Anchorages / trade port | EPSG:4326, used by `3docked_video_demo.py` |
-| `해안선버퍼.shp` | 100 m coastal buffer | EPSG:4326, used by `2acting_video2_demo.py` |
-
-Shapefile names above are placeholders — point the `load_shapes()` calls in each script's `main()` to your own files. Any port can be analyzed by swapping in that port's AIS extract and geography; nothing in the pipeline is Busan-specific except the input files.
-
-## Configuration & tuning
-
-All detection thresholds are named constants at the top of each script. The most useful knobs:
-
-| Constant | Script | Default | Effect of raising it |
-|---|---|---|---|
-| `SOG_STOPPED` | `ais_common` | 2.1 kn | More ships counted as stopped/berthed |
-| `STOP_DISTANCE_M` | `3docked` | 10 m | Looser "holding position" test |
-| `TURN_THRESHOLD_DEG` | `3docked` | 10° | Swinging at anchor detected less often |
-| `STOP_WINDOW_SEC` | `3docked` | 200 s | Sparser AIS reporting still qualifies for the stationary test |
-| `DEPARTURE_WINDOW_SEC` | `3docked` | 600 s | Route-deviation flag tolerates longer report gaps |
-| `PROXIMITY_RADIUS` | `2acting` | ≈ 570 m | Towing partner may be farther away |
-| `FISHING_SOG_MAX` | `2acting` | 5 kn | Faster fishing vessels still flagged as fishing |
-| `TOWING_SOG_MIN/MAX` | `2acting` | 0.5–8 kn | Wider tug working-speed band |
-| `FRAME_STEP_SEC` | both | 1 s | Coarser time step → shorter, faster-moving video |
-
-Rendering constants (figure size, DPI, marker sizes, arrow length) live in the same blocks. Sizes are expressed in EPSG:3857 map units (≈ meters at this latitude).
-
-## Shared library (`ais_common.py`)
-
-The two pipelines are thin scripts over a common library:
-
-| Function | Purpose |
-|---|---|
-| `load_ais_csv(path)` | Encoding-tolerant CSV load, timestamp parsing, EPSG:3857 `x`/`y` columns |
-| `load_ship_colors(path)` | `MMSI → display color` from AIS ship type codes |
-| `load_shapes(*paths)` | Read shapefiles, reproject to EPSG:3857, clean geometries (`buffer(0)`) |
-| `points_within(points, polys)` | Vectorized point-in-polygon membership via one spatial join |
-| `build_ship_groups(df)` | `MMSI → (sorted timestamps, trajectory)` for per-frame binary search |
-| `create_bar(...)` / `legend_*(...)` | Directional ship marker and legend entry builders |
-| `heading_diff(a, b)` | Minimal angular difference with 360° wraparound |
-| `haversine(...)` | Great-circle distance in meters |
-| `fetch_basemap(...)` | One-shot Esri World Imagery download for the data extent |
-| `run_ffmpeg(...)` | Frame-sequence encoding; tries `h264_nvenc`, falls back to `libx264` |
-| `setup_korean_font()` | Cross-platform Korean font registration for matplotlib |
-
-Anything that needs to be consistent across pipelines (colors, thresholds, geometry handling) lives here exactly once.
-
-## Performance design
-
-The naive implementation of this kind of renderer — filter the whole dataset per frame, test every ship against every polygon, download map tiles per frame — is quadratic-ish and network-bound. Each of those costs was moved out of the hot loop:
-
-| Bottleneck | Resolution |
-|---|---|
-| Basemap tiles downloaded per frame, per worker | Single `bounds2img` fetch in the main process, shared via pool initializer |
-| Point-in-polygon per ship × per frame | One vectorized `sjoin` over all fixes during preprocessing |
-| Full-dataset time filter per frame | Per-vessel time-sorted arrays + `np.searchsorted` (O(log n)) |
-| All rendered frames held in RAM | Frames streamed straight to a temporary directory |
-| Windows `spawn` re-running module-level loads in every worker | All loads inside `main()`; workers receive a pickled payload once |
-| Frame-order-dependent berthing state | Deterministic forward-fill state machine in preprocessing |
-
-The remaining per-frame cost is almost purely matplotlib drawing time, which parallelizes cleanly across the worker pool (one figure per frame, no shared state).
-
-## Troubleshooting
-
-| Symptom | Cause & fix |
-|---|---|
-| `ffmpeg를 찾을 수 없습니다` / `FileNotFoundError` | FFmpeg is not on `PATH`. Install it in the active conda env (`conda install ffmpeg -c conda-forge`) — the runner also auto-detects `<env>/Library/bin/ffmpeg.exe`. |
-| `h264_nvenc ... failed` messages, then encoding continues | Expected on machines without a (recent) NVIDIA GPU or with an older FFmpeg build: the runner automatically retries with `libx264`. The output is equivalent. |
-| Korean legend shows □□□ (tofu) | No Korean font found. Install NanumSquare or use Windows' bundled Malgun Gothic; `setup_korean_font()` searches both. |
-| Basemap download fails / blank background | First run needs internet access for Esri World Imagery tiles. Retry, or check proxy settings; contextily caches tiles after the first fetch. |
-| Run is slow or memory-heavy | Reduce `--frames`, lower the DPI/figure size constants, or trim the AIS CSV to the time window of interest. Preprocessing time is dominated by the spatial join; rendering scales with frames × ships. |
-| Ships frozen in place at video start | Expected: each ship appears at its most recent fix, so vessels that reported before the window opened hold their last position until a new fix arrives. |
-
-## Limitations & roadmap
-
-**Current limitations**
-
-- Classification is rule-based with thresholds tuned on a September 2022 Busan extract; other ports/seasons may need retuning (see [Configuration & tuning](#configuration--tuning)).
-- Headings are drawn in math-angle convention to preserve parity with the original videos; true compass-bearing rendering is available via `create_bar(..., compass=True)` but is off by default.
-- AIS quirks such as `Heading = 511` (not available) and long reporting gaps are carried through rather than imputed.
-- The 1 Hz frame step assumes reasonably dense AIS sampling; very sparse trajectories will look stepwise.
-
-**Roadmap**
-
-- [ ] Externalize input file paths into a config file / CLI arguments
-- [ ] Optional compass-bearing correction as a command-line flag
-- [ ] Event log export (CSV of detected behaviors with timestamps) alongside the video
-- [ ] Interactive output (deck.gl / kepler.gl) as an alternative to MP4
-- [ ] Learned classification models benchmarked against the rule set
-
-Issues and pull requests are welcome.
-
-## Glossary
-
-| Term | Meaning |
-|---|---|
-| **AIS** | Automatic Identification System — VHF broadcast of a vessel's identity, position, and kinematics |
-| **MMSI** | Maritime Mobile Service Identity — 9-digit unique vessel identifier |
-| **SOG** | Speed Over Ground, in knots |
-| **COG** | Course Over Ground — direction of actual movement |
-| **Heading** | Direction the bow points (differs from COG under wind/current); `511` means not available |
-| **Fairway (항로)** | Officially designated navigation channel |
-| **Anchorage (정박지)** | Designated area where vessels may anchor |
-| **EPSG:4326 / 3857** | WGS 84 lon-lat / Web Mercator (meter-like map units) coordinate systems |
-
-## Repository structure
-
-```
-├── ais_common.py             # Shared library: data loading, spatial joins, markers,
-│                             #   legends, heading utilities, FFmpeg runner
-├── 2acting_video2_demo.py    # Operational activity pipeline (berthing / fishing / towing)
-├── 3docked_video_demo.py     # Navigational status pipeline (anchoring / loitering / deviation)
-└── assets/                   # Demo GIFs and full-resolution MP4s
-```
+See [Validation details and reproduction checks](VALIDATION.md) for methodology and remaining evaluation. Full rendering was not rerun: inspected Python environments lack required geospatial/rendering dependencies, and FFmpeg was not on `PATH`.
 
 ## Notes
 
-- Basemap tiles: Esri World Imagery via [contextily](https://github.com/geopandas/contextily).
-- Detection thresholds (speed, distance, time windows) are defined as constants at the top of each script and can be tuned for other ports or datasets.
+- **Time semantics.** A one-second render step is playback sampling, not one-second AIS coverage. Latest fixes are held without interpolation or a maximum-age cutoff; stale fixes affect maps and proximity indicators.
+- **Missing directions.** `HEADING_NOT_AVAILABLE = 511` is defined but not used to mask directions or exclude heading changes. Missing COG falls back to Heading, which may also be unavailable.
+- **Bearing convention.** Both demos use mathematical angles (east = 0°, counterclockwise), rather than AIS compass bearings. The shared helper supports `compass=True`, but marker and navigation-arrow call sites do not enable it.
+- **Spatial semantics.** `within` excludes boundaries. `buffer(0)` is a geometry operation, not a quality report. EPSG:3857 supports map display but requires care for physical-distance analysis.
+- **Historical geography.** AIS is from 2022; layer filenames include 2023 and 2024. Check whether boundaries were valid on the observation date before interpreting zone membership or departures.
+- **Output scope.** Entry points export videos, not event CSVs, statistical summaries, vessel-level evaluations, or real-time monitoring. Existing media are illustrations, not evaluation evidence.
+- **Provenance and attribution.** Imagery is fetched through [contextily](https://github.com/geopandas/contextily). Preserve provider attribution and check imagery/data reuse terms when sharing outputs. Original AIS acquisition provenance and spatial-layer redistribution terms are not documented here.
+- **License.** No `LICENSE` file is present; this README does not assert an open-source license.
+
+<details>
+<summary><strong>Tuning and troubleshooting</strong></summary>
+
+| Setting / symptom | Where to look / action |
+|---|---|
+| Stopped threshold | `ais_common.SOG_STOPPED = 2.1` knots |
+| Stationary comparison | Navigation: `STOP_WINDOW_SEC = 200`, `STOP_DISTANCE_M = 10`, `TURN_THRESHOLD_DEG = 10` |
+| Fairway exit gap | Navigation: `DEPARTURE_WINDOW_SEC = 600`, strict `<` comparison |
+| Activity thresholds | `FISHING_SOG_MAX = 5`; `TOWING_SOG_MIN/MAX = 0.5/8`; `PROXIMITY_RADIUS` |
+| Simulation step | `FRAME_STEP_SEC = 1` in both scripts; independent of `--fps` |
+| Missing input | Check filenames beside the scripts and Shapefile companions |
+| FFmpeg not found | Install it; helper checks `PATH` then `sys.prefix/Library/bin/ffmpeg.exe` |
+| NVENC failure | Navigation retries `libx264`; different codecs/settings can yield different outputs |
+| Korean glyphs missing | Install a supported Nanum font or use Windows Malgun Gothic |
+| Basemap request fails | Check network access; no explicit offline fallback in `fetch_basemap()` |
+| High RAM / disk usage | Reduce workers in code, figure size/DPI, frame count or input extent |
+
+Tune against labeled examples, vessel classes, and reporting intervals. Retain input versions, code revision, environment, and parameters with results.
+
+</details>
+
+## Repository map
+
+```text
+.
+├── README.md                       # English landing page
+├── README.ko.md                    # Korean documentation
+├── ais_common.py                   # Shared geospatial/rendering utilities
+├── 3docked_video_demo.py            # Navigational status video
+├── 2acting_video2_demo.py           # Operational activity video
+├── VALIDATION.md                   # Audit evidence and validation limits
+└── assets/                         # Two GIF previews and two MP4 demos
+```
+
+The working folder also contains untracked historical scripts, alternative inputs, backups, and larger videos. They are outside the public entry points and are not required merely because they exist locally.
+
+## Next steps and contributions
+
+- [ ] Mask AIS sentinel values; add fix-age limits and duplicate-time handling.
+- [ ] Respect source CRS and use a suitable local metric CRS for proximity.
+- [ ] Separate anchorage, port, and berth concepts; version geography by observation date.
+- [ ] Externalize paths, worker count, time window, and bearing mode.
+- [ ] Export timestamped candidates and review against independent event labels.
+- [ ] Pin environments and publish runtime, memory, and classification benchmarks.
+
+For issues or PRs, include input schema, parameters, and a minimal reproducible example. Share synthetic or appropriately anonymized data rather than raw AIS extracts.
