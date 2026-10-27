@@ -49,7 +49,7 @@ The 2024 conference poster and 2025 workshop deck provide research context, meth
 
 | Material | Context | Original |
 |---|---|---|
-| 2024 conference poster | Fall conference of 한국해양환경에너지학회 · AIS anchoring, drifting and behavior study | [한국어 원문 PDF](https://fortranmentis.github.io/assets/research/ais-poster-ko.pdf) · [English translation PDF](https://fortranmentis.github.io/assets/research/ais-poster-en.pdf) |
+| 2024 conference poster | Fall conference of The Korean Society for marine Environment and Energy · AIS anchoring, drifting and behavior study | [한국어 원문 PDF](https://fortranmentis.github.io/assets/research/ais-poster-ko.pdf) · [English translation PDF](https://fortranmentis.github.io/assets/research/ais-poster-en.pdf) |
 | 2025 workshop | **January 14, 2025**, Technical Exchange Workshop for Maritime Traffic Network Operations and Management · Sang Hak Lee | [PPTX · 31.2 MB](https://fortranmentis.github.io/assets/research/ais-workshop-2025.pptx) |
 
 The English poster is the supplied translation, not represented as an original English conference submission. Original documents are served from GitHub Pages.
