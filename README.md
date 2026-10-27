@@ -14,7 +14,7 @@ Rule-based geospatial analysis · Vessel activity indicators · Satellite-map ti
 ![FFmpeg](https://img.shields.io/badge/FFmpeg-H.264-007808?logo=ffmpeg&logoColor=white)
 ![Method](https://img.shields.io/badge/Method-rule_based-526D82)
 
-[About](#about) · [Highlights](#highlights) · [Demo](#demo) · [Quick start](#quick-start) · [Validation](#validation) · [Notes](#notes)
+[About](#about) · [Highlights](#highlights) · [Research presentations](#research-presentations) · [Demo](#demo) · [Quick start](#quick-start) · [Validation](#validation) · [Notes](#notes)
 
 </div>
 
@@ -40,6 +40,58 @@ The emphasis is **inspectable rules and spatial context**: analysts can trace ea
 - **Time-series state.** MMSI groups are sorted once and queried with `numpy.searchsorted`. Berthing state is computed before parallel rendering.
 - **Parallel video generation.** A process pool renders 3000 × 2000 RGB frames; ordered `imap` results are saved as temporary PNGs and encoded with FFmpeg.
 - **Evidence-aware documentation.** Local input inventories, quality findings, and validation limits are recorded in [the validation report](VALIDATION.md).
+
+<a id="research-presentations"></a>
+
+## Research presentations
+
+The 2024 conference poster and 2025 workshop deck provide research context, methods and examples alongside the public code. Their study settings are not assumed to match the current implementation.
+
+| Material | Context | Original |
+|---|---|---|
+| 2024 conference poster | Fall conference of 한국해양환경에너지학회 · AIS anchoring, drifting and behavior study | [한국어 원문 PDF](https://fortranmentis.github.io/assets/research/ais-poster-ko.pdf) · [English translation PDF](https://fortranmentis.github.io/assets/research/ais-poster-en.pdf) |
+| 2025 workshop | **January 14, 2025**, Technical Exchange Workshop for Maritime Traffic Network Operations and Management · Sang Hak Lee | [PPTX · 31.2 MB](https://fortranmentis.github.io/assets/research/ais-workshop-2025.pptx) |
+
+The English poster is the supplied translation, not represented as an original English conference submission. Original documents are served from GitHub Pages.
+
+### Methods presented at the workshop
+
+- **Data:** 2022 Busan-area static AIS identifiers/types and dynamic time, position, SOG, course and heading.
+- **Processing:** Python multiprocessing with ordered `imap` output.
+- **Navigation states:** Position, speed, heading, fairway/anchorage membership and arc-like, linear or Z-shaped movement patterns inform anchoring, drifting and fairway-exit criteria.
+- **Vessel-type activity:** Six broad vessel groups use persistent low speed, port membership and co-movement/proximity to display activity candidates.
+
+<table>
+<tr>
+<td width="50%"><a href="https://fortranmentis.github.io/assets/research/ais-workshop-navigation.webp"><img src="https://fortranmentis.github.io/assets/research/ais-workshop-navigation.webp" alt="Slide 10 · Anchoring, drifting and fairway-exit indicators" width="100%" /></a><p>Slide 10 · Anchoring, drifting and fairway-exit indicators</p></td>
+<td width="50%"><a href="https://fortranmentis.github.io/assets/research/ais-workshop-activities.webp"><img src="https://fortranmentis.github.io/assets/research/ais-workshop-activities.webp" alt="Slide 11 · Vessel-type activity candidates" width="100%" /></a><p>Slide 11 · Vessel-type activity candidates</p></td>
+</tr>
+</table>
+
+Whole embedded images from the deck retain their legends and Esri/other basemap credits. They illustrate research outputs; they are not event ground truth or accuracy measurements.
+
+### Presentation settings versus public code
+
+| Topic | Presentation | Public implementation documented here |
+|---|---|---|
+| Low-speed criterion | Below 0.5 knots in the study classification | `SOG_STOPPED = 2.1` knots plus spatial, displacement and heading conditions |
+| Fairway-exit display | Five-minute retention, cleared on re-entry | Previous/latest membership transition with report gap `< 600 s`; the same pair may persist until the next AIS fix |
+| Time and execution | Research system described with one-second updates/display | Historical AIS sampled at `FRAME_STEP_SEC = 1` for PNG/MP4 rendering; no verified live-stream acquisition or operation |
+| Follow-up work | Wind/current integration, richer drifting patterns, individual trajectories and accident detection | Not represented as fully implemented in the two public demos |
+
+The **Classification rules** below remain the source of truth for the public code. This documentation update does not change thresholds to match the slides. The [validation record](VALIDATION.md) does not certify classification accuracy or live operational performance.
+
+<details>
+<summary>Preview the 2024 conference poster</summary>
+
+<table><tr>
+<td width="50%"><a href="https://fortranmentis.github.io/assets/research/ais-poster-en.pdf"><img src="https://fortranmentis.github.io/assets/research/ais-poster-en.webp" alt="English translation — AIS conference poster" width="100%" /></a><p>English translation</p></td>
+<td width="50%"><a href="https://fortranmentis.github.io/assets/research/ais-poster-ko.pdf"><img src="https://fortranmentis.github.io/assets/research/ais-poster-ko.webp" alt="한국어 원문 — AIS conference poster" width="100%" /></a><p>한국어 원문</p></td>
+</tr></table>
+
+</details>
+
+[Workshop research overview](https://fortranmentis.github.io/#ais-workshop) · [Conference poster overview](https://fortranmentis.github.io/#research)
 
 ## Demo
 
@@ -261,3 +313,4 @@ The working folder also contains untracked historical scripts, alternative input
 - [ ] Pin environments and publish runtime, memory, and classification benchmarks.
 
 For issues or PRs, include input schema, parameters, and a minimal reproducible example. Share synthetic or appropriately anonymized data rather than raw AIS extracts.
+

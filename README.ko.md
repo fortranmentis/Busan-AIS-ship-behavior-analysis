@@ -14,7 +14,7 @@
 ![FFmpeg](https://img.shields.io/badge/FFmpeg-H.264-007808?logo=ffmpeg&logoColor=white)
 ![Method](https://img.shields.io/badge/Method-rule_based-526D82)
 
-[About](#about) · [Highlights](#highlights) · [Demo](#demo) · [시작하기](#시작하기) · [Validation](#validation) · [Notes](#notes)
+[About](#about) · [Highlights](#highlights) · [연구 발표](#research-presentations) · [Demo](#demo) · [시작하기](#시작하기) · [Validation](#validation) · [Notes](#notes)
 
 </div>
 
@@ -40,6 +40,58 @@
 - **선박별 시계열 처리:** MMSI별 항적을 정렬하고 `numpy.searchsorted`로 최신 관측을 조회합니다. 접안 상태는 병렬 렌더링 전에 계산합니다.
 - **병렬 영상 생성:** 프로세스 풀로 3000 × 2000 RGB 프레임을 생성하고 순서가 보존되는 `imap` 결과를 임시 PNG로 저장한 뒤 FFmpeg로 인코딩합니다.
 - **근거가 드러나는 문서:** 로컬 입력 목록, 데이터 품질 점검 결과, 검증 한계를 [검증 보고서](VALIDATION.md)에 기록했습니다.
+
+<a id="research-presentations"></a>
+
+## 연구 발표 · 포스터와 워크숍
+
+공개 코드와 함께 연구의 배경·방법·예시를 확인할 수 있도록 2024년 학회 포스터와 2025년 워크숍 발표자료를 연결합니다. 문서의 연구 설정과 현재 공개 코드의 구현은 동일하다고 가정하지 않습니다.
+
+| 자료 | 맥락 | 원문 |
+|---|---|---|
+| 2024 학회 포스터 | 한국해양환경에너지학회 추계학술대회 · 실시간 선박 데이터 추적을 통한 정박·정류 감지 및 행위식별 연구 | [한국어 원문 PDF](https://fortranmentis.github.io/assets/research/ais-poster-ko.pdf) · [English translation PDF](https://fortranmentis.github.io/assets/research/ais-poster-en.pdf) |
+| 2025 워크숍 발표 | **2025.01.14**, 해상교통망 운영관리를 위한 기술교류 워크숍 · 발표자 이상학 | [PPTX · 31.2 MB](https://fortranmentis.github.io/assets/research/ais-workshop-2025.pptx) |
+
+영문 포스터는 제공받은 번역본이며 원래 영문으로 학회에 제출한 자료라고 표시하지 않습니다. 원문은 GitHub Pages에서 제공합니다.
+
+### 워크숍에서 소개한 연구 방법
+
+- **자료:** 2022년 부산 해역 AIS 정적정보(선박 ID·종류 등)와 동적정보(시각·위치·SOG·침로·선수방위)를 결합합니다.
+- **처리:** Python multiprocessing과 순서가 유지되는 `imap` 출력을 이용한 처리 구조를 설명합니다.
+- **이동 상태:** 좌표·속도·방위·항로/정박지 소속과 원호형·직선·Z형 이동 패턴을 참고해 정박·정류·항로 이탈 기준을 구성합니다.
+- **선종별 행위:** 어선, 견인·예인선, 요트·유람선, 쾌속·여객선, 화물선, 유조선 등 6개 묶음별로 저속 지속·항구 소속·선박 동행을 활용한 후보를 표시합니다.
+
+<table>
+<tr>
+<td width="50%"><a href="https://fortranmentis.github.io/assets/research/ais-workshop-navigation.webp"><img src="https://fortranmentis.github.io/assets/research/ais-workshop-navigation.webp" alt="발표 10쪽 · 정박·정류·항로 이탈" width="100%" /></a><p>발표 10쪽 · 정박·정류·항로 이탈</p></td>
+<td width="50%"><a href="https://fortranmentis.github.io/assets/research/ais-workshop-activities.webp"><img src="https://fortranmentis.github.io/assets/research/ais-workshop-activities.webp" alt="발표 11쪽 · 선종별 행위 후보" width="100%" /></a><p>발표 11쪽 · 선종별 행위 후보</p></td>
+</tr>
+</table>
+
+발표자료의 내장 이미지를 자르지 않고 사용했으며 범례와 Esri 등 배경지도 출처를 유지했습니다. 실제 활동의 정답 라벨이나 정확도 평가 결과는 아닙니다.
+
+### 발표 설정과 공개 코드의 차이
+
+| 항목 | 발표자료 | 현재 README에 기록된 공개 구현 |
+|---|---|---|
+| 저속 기준 | 0.5 knot 미만을 연구 분류 기준으로 소개 | `SOG_STOPPED = 2.1` knot 및 공간·변위·방위 조건 |
+| 항로 이탈 표시 | 5분 유지, 재진입 시 해제 설명 | 이전/최신 관측의 항로 소속 전이, 관측 간격 `< 600 s`; 다음 AIS 관측까지 같은 쌍이 재사용될 수 있음 |
+| 시간·실행 | 1초 갱신·표출 설정의 연구 시스템 소개 | 과거 AIS를 `FRAME_STEP_SEC = 1`로 표본화해 PNG·MP4 생성; 실시간 스트림 수집·운영 검증 아님 |
+| 후속 과제 | 바람·조류 결합, 정류 패턴 고도화, 선박별 항적과 사고 감지 제안 | 해당 제안을 현재 두 데모에 모두 구현했다고 주장하지 않음 |
+
+따라서 아래 **판정 규칙**는 공개 코드 기준으로 유지합니다. 연구자료의 임계값으로 코드를 바꾼 것은 아니며, 원문과 코드 간 기능·버전 차이를 기록한 것입니다. [검증 기록](VALIDATION.md)은 분류 정확도·현업 실시간 성능을 인증하지 않습니다.
+
+<details>
+<summary>2024 학회 포스터 미리보기</summary>
+
+<table><tr>
+<td width="50%"><a href="https://fortranmentis.github.io/assets/research/ais-poster-en.pdf"><img src="https://fortranmentis.github.io/assets/research/ais-poster-en.webp" alt="English translation — AIS conference poster" width="100%" /></a><p>English translation</p></td>
+<td width="50%"><a href="https://fortranmentis.github.io/assets/research/ais-poster-ko.pdf"><img src="https://fortranmentis.github.io/assets/research/ais-poster-ko.webp" alt="한국어 원문 — AIS conference poster" width="100%" /></a><p>한국어 원문</p></td>
+</tr></table>
+
+</details>
+
+[워크숍 연구 소개](https://fortranmentis.github.io/ko/#ais-workshop) · [학회 포스터 보기](https://fortranmentis.github.io/ko/#research)
 
 ## Demo
 
@@ -261,3 +313,4 @@ flowchart TD
 - [ ] 환경 버전 고정 및 속도·메모리·분류 벤치마크 공개
 
 이슈·PR에는 입력 스키마, 설정값, 최소 재현 예시를 포함해주세요. 원본 AIS 대신 합성 자료나 적절히 비식별화한 예시를 사용하세요.
+
